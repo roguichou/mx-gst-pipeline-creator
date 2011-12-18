@@ -61,7 +61,7 @@ AC_DEFINE_UNQUOTED(FL3D_PREFIX, "$prefix", [prefix])
 AC_CONFIG_FILES([
         Makefile
         src/Makefile
-        src/ihm/Makefile
+        src/mx-graph/Makefile
 ])
 
 AC_OUTPUT
