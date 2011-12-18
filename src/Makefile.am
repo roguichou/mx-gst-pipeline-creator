@@ -12,5 +12,5 @@ mx_gpc_LDADD = \
 mx_gpc_CFLAGS = \
 				-Iihm/ \
 			  $(DEPS_CFLAGS) \
-			  -O0 -g -Wall -Werror
+			  -O0 -g3 -Wall -Werror
 

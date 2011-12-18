@@ -38,7 +38,7 @@ typedef struct _MxGraphElementLinkPrivate MxGraphElementLinkPrivate;
 
 struct _MxGraphElementLink
 {
-  MxWidget               parent_instance;
+  MxWidget                  parent_instance;
   MxGraphElementLinkPrivate *priv;
 };
 
@@ -49,15 +49,20 @@ struct _MxGraphElementLinkClass
 
 GType mx_graph_element_link_get_type (void) G_GNUC_CONST;
 
-MxGraphElementLink *mx_graph_element_link_new(gfloat xorig, gfloat yorig);
+MxGraphElementLink *
+mx_graph_element_link_new(ClutterContainer *cont,
+                          gfloat            xorig,
+                          gfloat            yorig);
 
 void
 mx_graph_element_link_set_dest_point (MxGraphElementLink *actor, 
-    gfloat xdest, gfloat ydest);
+                                      gfloat              xdest,
+                                      gfloat              ydest);
 
 void
 mx_graph_element_link_set_orig_point (MxGraphElementLink *actor, 
-    gfloat xori, gfloat yori);
+                                      gfloat              xori,
+                                      gfloat              yori);
 
 G_END_DECLS
 

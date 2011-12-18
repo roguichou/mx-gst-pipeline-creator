@@ -12,7 +12,7 @@ G_BEGIN_DECLS
   MX_TYPE_GRAPH_ELEMENT, MxGraphElement))
 
 #define MX_IS_GRAPH_ELEMENT(obj)         (G_TYPE_CHECK_INSTANCE_TYPE((obj), \
-  MX_TYPE_GRAPH_ELEMENT)
+  MX_TYPE_GRAPH_ELEMENT))
 
 #define MX_GRAPH_ELEMENT_CLASS(klass)    (G_TYPE_CHECK_CLASS_CAST ((klass), \
   MX_TYPE_GRAPH_ELEMENT, MxGraphElementClass))
@@ -49,10 +49,13 @@ struct _MxGraphElementClass
 GType mx_graph_element_get_type (void) G_GNUC_CONST;
 
 void 
-mx_graph_element_add_pad(MxGraphElement *elt, MxGraphElementPad *pad, 
-    MxGraphElementPadPosition position);
+mx_graph_element_add_pad(MxGraphElement            *elt, 
+                         MxGraphElementPad         *pad, 
+                         MxGraphElementPadPosition  position);
 
-MxGraphElement *mx_graph_element_new(gchar *name, gchar *short_desc);
+MxGraphElement *
+mx_graph_element_new(gchar *name, 
+                     gchar *short_desc);
 
 G_END_DECLS
 
