@@ -6,6 +6,15 @@
 #include "mx-graph-element-pad.h"
 #include "mx-graph-element-link.h"
 
+enum
+{
+  PROP_0,
+
+  PROP_NAME,
+  PROP_BLURB,
+  PROP_COMPATIBLE_FUNC
+};
+
 struct _MxGraphElementPadPrivate
 {
   gchar               *name;
@@ -80,7 +89,7 @@ mx_graph_element_pad_is_compatible(MxGraphElementPad *pad_orig,
   }
   else
   {
-    return pad_orig->priv->is_compatible_func(pad_dest);
+    return pad_orig->priv->is_compatible_func(pad_orig, pad_dest);
   }
 }
 
@@ -141,17 +150,15 @@ mx_graph_element_pad_on_stage_capture (ClutterActor      *stage,
         ClutterActor *picked = clutter_stage_get_actor_at_pos(
             CLUTTER_STAGE(clutter_stage_get_default()),
             CLUTTER_PICK_REACTIVE, x, y);
-        if(NULL != picked && MX_IS_GRAPH_ELEMENT_PAD(picked))
+        if((NULL != picked && MX_IS_GRAPH_ELEMENT_PAD(picked)) &&
+            mx_graph_element_pad_is_compatible(MX_GRAPH_ELEMENT_PAD(actor),
+              MX_GRAPH_ELEMENT_PAD(picked)))
         {
-          if(mx_graph_element_pad_is_compatible(MX_GRAPH_ELEMENT_PAD(actor),
-                MX_GRAPH_ELEMENT_PAD(picked)))
+          mx_graph_element_pad_set_link(MX_GRAPH_ELEMENT_PAD(picked), 
+              priv->link);
+          if(NULL != priv->link)
           {
-            mx_graph_element_pad_set_link(MX_GRAPH_ELEMENT_PAD(picked), 
-                priv->link);
-            if(NULL != priv->link)
-            {
-              clutter_actor_set_reactive(CLUTTER_ACTOR(priv->link), TRUE);
-            }
+            clutter_actor_set_reactive(CLUTTER_ACTOR(priv->link), TRUE);
           }
         }
         else
@@ -191,7 +198,8 @@ mx_graph_element_pad_button_press (ClutterActor       *actor,
   {
     priv->capture_event_signal_id = g_signal_connect_after (
         clutter_stage_get_default(),
-        "captured-event", G_CALLBACK (mx_graph_element_pad_on_stage_capture),
+        "captured-event", 
+        G_CALLBACK (mx_graph_element_pad_on_stage_capture),
         actor);
 
     ClutterActorBox box;
@@ -267,6 +275,65 @@ mx_graph_element_pad_parent_set(ClutterActor *actor,
         G_CALLBACK(mx_graph_element_pad_on_parent_allocation_changed), actor);
 }
 
+
+static void
+mx_graph_element_pad_set_property (GObject      *gobject,
+                                   guint         prop_id,
+                                   const GValue *value,
+                                   GParamSpec   *pspec)
+{
+  MxGraphElementPadPrivate *priv = MX_GRAPH_ELEMENT_PAD(gobject)->priv;
+  gchar *txt = NULL;
+  switch (prop_id)
+  {
+    case PROP_NAME:
+      priv->name = g_strdup(g_value_get_string(value));
+      txt = g_strdup_printf("%s \n %s", priv->name, priv->short_desc);
+      mx_widget_set_tooltip_text(MX_WIDGET(gobject), txt);
+      g_free(txt);
+      break;
+
+    case PROP_BLURB:
+      priv->short_desc = g_strdup(g_value_get_string(value));
+      txt = g_strdup_printf("%s \n %s", priv->name, priv->short_desc);
+      mx_widget_set_tooltip_text(MX_WIDGET(gobject), txt);
+      g_free(txt);
+      break;
+
+    case PROP_COMPATIBLE_FUNC:
+      priv->is_compatible_func = g_value_get_pointer(value);
+      break;
+
+    default:
+      G_OBJECT_WARN_INVALID_PROPERTY_ID (gobject, prop_id, pspec);
+      break;
+    }
+}
+
+static void
+mx_graph_element_pad_get_property (GObject    *gobject,
+                                   guint       prop_id,
+                                   GValue     *value,
+                                   GParamSpec *pspec)
+{
+  MxGraphElementPadPrivate *priv = MX_GRAPH_ELEMENT_PAD(gobject)->priv;
+
+  switch (prop_id)
+  {
+    case PROP_NAME:
+      g_value_set_string(value, priv->name);
+      break;
+    case PROP_BLURB:
+      g_value_set_string(value, priv->short_desc);
+      break;
+    case PROP_COMPATIBLE_FUNC:
+      g_value_set_pointer(value, priv->is_compatible_func);
+      break;
+    default:
+      G_OBJECT_WARN_INVALID_PROPERTY_ID (gobject, prop_id, pspec);
+      break;
+  }
+}
 static void
 mx_graph_element_pad_class_init (MxGraphElementPadClass *klass)
 {
@@ -278,6 +345,34 @@ mx_graph_element_pad_class_init (MxGraphElementPadClass *klass)
   actor_class->allocate             = mx_graph_element_pad_allocate;
   actor_class->button_press_event   = mx_graph_element_pad_button_press;
   actor_class->parent_set           = mx_graph_element_pad_parent_set;
+
+  GObjectClass *gobject_class = G_OBJECT_CLASS(klass);
+  gobject_class->set_property = mx_graph_element_pad_set_property;
+  gobject_class->get_property = mx_graph_element_pad_get_property;
+
+  GParamSpec *pspec = NULL;
+  pspec = g_param_spec_string ("name",
+                               "Name",
+                               "Name of the Pad",
+                               NULL,
+                               G_PARAM_READABLE | G_PARAM_WRITABLE);
+  g_object_class_install_property (gobject_class, PROP_NAME, pspec);
+
+  pspec = g_param_spec_string ("blurb",
+                               "Blurb",
+                               "Short description of the Pad",
+                               NULL,
+                               G_PARAM_READABLE | G_PARAM_WRITABLE);
+  g_object_class_install_property (gobject_class, PROP_BLURB, pspec);
+
+
+  pspec = g_param_spec_pointer("is-compatible-func",
+                               "IsCompatibleFunc",
+                               "Function to tell whether a pad"
+                               "is compatible with this one or not",
+                               G_PARAM_READABLE | G_PARAM_WRITABLE);
+  g_object_class_install_property(gobject_class, PROP_COMPATIBLE_FUNC, pspec);
+
 }
 
 static void
@@ -301,17 +396,11 @@ mx_graph_element_pad_new(gchar               *name,
                          PadIsCompatibleFunc *is_compatible_func)
 {
   MxGraphElementPad *res = MX_GRAPH_ELEMENT_PAD(
-      g_object_new(MX_TYPE_GRAPH_ELEMENT_PAD, NULL));
-  MxGraphElementPadPrivate *priv = res->priv;
-  priv->name               = name;
-  priv->short_desc         = short_desc;
-  priv->is_compatible_func = is_compatible_func;
-
-  gchar *txt = g_strdup_printf("%s \n %s", name, short_desc);
-  mx_widget_set_tooltip_text(MX_WIDGET(res), txt);
-  g_free(txt);
-
-
+      g_object_new(MX_TYPE_GRAPH_ELEMENT_PAD, 
+        "name", name,
+        "blurb", short_desc,
+        "is-compatible-func", is_compatible_func,
+        NULL));
   return res;
 }
 

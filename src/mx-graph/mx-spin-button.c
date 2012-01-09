@@ -20,7 +20,14 @@ struct _MxSpinButtonPrivate
   ClutterActor *entry;
   GType         type;
   GValue        curr_value;
+  GValue        value_min;
+  GValue        value_max;
   ClutterActor *icon;
+  ClutterActor *down_stepper;
+  ClutterActor *up_stepper;
+  guint         stepper_source;
+  gint          delta;
+  gboolean      is_valid;
 };
 
 static void mx_focusable_iface_init (MxFocusableIface *iface);
@@ -52,6 +59,8 @@ mx_spin_button_map (ClutterActor *self)
 
   clutter_actor_map (priv->entry);
   clutter_actor_map (priv->icon);
+  clutter_actor_map (priv->down_stepper);
+  clutter_actor_map (priv->up_stepper);
 }
 
 static void
@@ -63,6 +72,8 @@ mx_spin_button_unmap (ClutterActor *self)
 
   clutter_actor_unmap (priv->entry);
   clutter_actor_unmap (priv->icon);
+  clutter_actor_unmap (priv->down_stepper);
+  clutter_actor_unmap (priv->up_stepper);
 }
 
 static void
@@ -74,6 +85,8 @@ mx_spin_button_paint(ClutterActor *actor)
 
   clutter_actor_paint (priv->entry);
   clutter_actor_paint (priv->icon);
+  clutter_actor_paint (priv->down_stepper);
+  clutter_actor_paint (priv->up_stepper);
 }
 
 static void
@@ -89,12 +102,14 @@ mx_spin_button_allocate (ClutterActor           *actor,
   ClutterActorBox childbox;
   childbox.x1 = 0;
   childbox.y1 = 0;
+  
+  gfloat h = (box->y2 - box->y1)/2.;
 
   if(NULL != priv->icon)
   {
     gint sz = mx_icon_get_icon_size(MX_ICON(priv->icon));
     childbox.x2 = sz;
-    childbox.y1 = ((box->y2 - box->y1)-sz)/2;
+    childbox.y1 = h - sz/2.;
     childbox.y2 = childbox.y1 + sz;
     clutter_actor_allocate (priv->icon, &childbox, flags);
     childbox.x1 = sz+2;
@@ -102,8 +117,19 @@ mx_spin_button_allocate (ClutterActor           *actor,
 
   childbox.y1 = 0;
   childbox.y2 = (box->y2 - box->y1);
-  childbox.x2 = (box->x2 - box->x1);
+  childbox.x2 = (box->x2 - box->x1)-h;
   clutter_actor_allocate (priv->entry, &childbox, flags);
+  
+  childbox.x1 = childbox.x2;
+  childbox.x2 = childbox.x1 + h;
+  childbox.y1 = 0;
+  childbox.y2 = h;
+  clutter_actor_allocate (priv->up_stepper, &childbox, flags);
+  
+
+  childbox.y1 = h;
+  childbox.y2 = 2.*h;
+  clutter_actor_allocate (priv->down_stepper, &childbox, flags);
 }
 
 static void
@@ -118,6 +144,8 @@ mx_spin_button_set_property (GObject      *gobject,
     case PROP_TYPE:
       priv->type = g_value_get_gtype(value);
       g_value_init(&priv->curr_value, priv->type);
+      g_value_init(&priv->value_min, priv->type);
+      g_value_init(&priv->value_max, priv->type);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (gobject, prop_id, pspec);
@@ -185,6 +213,8 @@ mx_spin_button_pick (ClutterActor       *actor,
   {
     clutter_actor_paint (priv->icon);
   }
+  clutter_actor_paint (priv->down_stepper);
+  clutter_actor_paint (priv->up_stepper);
 }
 
 static void
@@ -211,8 +241,273 @@ mx_spin_button_class_init (MxSpinButtonClass *klass)
                               G_TYPE_NONE,
                               G_PARAM_READABLE | G_PARAM_WRITABLE);
   g_object_class_install_property (gobject_class, PROP_TYPE, pspec);
+}
 
-  //TODO
+static void
+notify_value_changed_valid(MxSpinButton *spin_button)
+{
+  MxSpinButtonPrivate *priv = spin_button->priv;
+  gchar *txt = NULL;
+
+  switch (priv->type) 
+  {
+    case G_TYPE_ULONG:
+      txt = g_strdup_printf("%lu", g_value_get_ulong(&priv->curr_value));
+      break;
+    case G_TYPE_LONG:
+      txt = g_strdup_printf("%ld", g_value_get_long(&priv->curr_value));
+      break;
+    case G_TYPE_UINT:
+      txt = g_strdup_printf("%u", g_value_get_uint(&priv->curr_value));
+      break;
+    case G_TYPE_INT:
+      txt = g_strdup_printf("%d", g_value_get_int(&priv->curr_value));
+      break;
+    case G_TYPE_UINT64:
+      txt = g_strdup_printf("%"G_GUINT64_FORMAT,
+          g_value_get_uint64(&priv->curr_value));
+      break;
+    case G_TYPE_INT64:
+      txt = g_strdup_printf("%"G_GINT64_FORMAT,
+          g_value_get_int64(&priv->curr_value));
+      break;
+    case G_TYPE_FLOAT:
+      txt = g_strdup_printf("%15.7g",
+          g_value_get_float(&priv->curr_value));
+      break;
+    case G_TYPE_DOUBLE:
+      txt = g_strdup_printf("%15.7g",
+          g_value_get_double(&priv->curr_value));
+      break;
+    default:
+      g_assert_not_reached();
+      break;
+  }
+  mx_entry_set_text(MX_ENTRY(priv->entry), txt);
+  g_free(txt);
+}
+
+static gboolean
+_value_change_cb(MxSpinButton *sp)
+{
+  MxSpinButtonPrivate *priv = sp->priv;
+  if(!priv->is_valid)
+  {
+    return TRUE;
+  }
+
+  switch (priv->type) 
+  {
+    case G_TYPE_ULONG:
+      {
+        gulong val = g_value_get_ulong(&priv->curr_value);
+        gulong maxval = g_value_get_ulong(&priv->value_max);
+        gulong minval = g_value_get_ulong(&priv->value_min);
+        if(val > 0 && priv->delta < 0)
+        {
+          val = (gulong)((glong)val + (glong)priv->delta);
+        }
+        else if(priv->delta > 0)
+        {
+          val += (gulong)priv->delta;
+        }
+        if(val >= minval && val <= maxval)
+        {
+          g_value_set_ulong(&priv->curr_value, (gulong)val);
+        }
+        break;
+      }
+    case G_TYPE_LONG:
+      {
+        glong val = g_value_get_long(&priv->curr_value) +
+          (glong)priv->delta;
+        glong maxval = g_value_get_long(&priv->value_max);
+        glong minval = g_value_get_long(&priv->value_min);
+        if(val >= minval && val <= maxval)
+        {
+          g_value_set_long(&priv->curr_value, val);
+        }
+        break;
+      }
+    case G_TYPE_UINT:
+      {
+        guint val = g_value_get_uint(&priv->curr_value);
+        guint maxval = g_value_get_uint(&priv->value_max);
+        guint minval = g_value_get_uint(&priv->value_min);
+        if(val > 0 && priv->delta < 0)
+        {
+          val = (guint)((gint)val + (gint)priv->delta);
+        }
+        else if(priv->delta > 0)
+        {
+          val += (guint)priv->delta;
+        }
+        if(val >= minval && val <= maxval)
+        {
+          g_value_set_uint(&priv->curr_value, (guint)val);
+        }
+        break;
+      }
+    case G_TYPE_INT:
+      {
+        gint val = g_value_get_int(&priv->curr_value) + (gint)priv->delta;
+        gint maxval = g_value_get_int(&priv->value_max);
+        gint minval = g_value_get_int(&priv->value_min);
+        if(val >= minval && val <= maxval)
+        {
+          g_value_set_int(&priv->curr_value, val);
+        }
+        break;
+      }
+    case G_TYPE_UINT64:
+      {
+        guint64 val = g_value_get_uint64(&priv->curr_value);
+        guint64 maxval = g_value_get_uint64(&priv->value_max);
+        guint64 minval = g_value_get_uint64(&priv->value_min);
+        if(val > 0 && priv->delta < 0)
+        {
+          val = (guint64)((gint64)val + (gint64)priv->delta);
+        }
+        else if(priv->delta > 0)
+        {
+          val += (guint64)priv->delta;
+        }
+        if(val >= minval && val <= maxval)
+        {
+          g_value_set_uint64(&priv->curr_value, (guint64)val);
+        }
+        break;
+      }
+    case G_TYPE_INT64:
+      {
+        gint64 val = g_value_get_int64(&priv->curr_value) + 
+          (gint64)priv->delta;
+        gint64 maxval = g_value_get_int64(&priv->value_max);
+        gint64 minval = g_value_get_int64(&priv->value_min);
+        if(val >= minval && val <= maxval)
+        {
+          g_value_set_int64(&priv->curr_value, val);
+        }
+        break;
+      }
+    case G_TYPE_FLOAT:
+      {
+        gfloat val = g_value_get_float(&priv->curr_value) + 
+          (gfloat)priv->delta;
+        gfloat maxval = g_value_get_float(&priv->value_max);
+        gfloat minval = g_value_get_float(&priv->value_min);
+        if(val >= minval && val <= maxval)
+        {
+          g_value_set_float(&priv->curr_value, val);
+        }
+        break;
+      }
+    case G_TYPE_DOUBLE:
+      {
+        gdouble val = g_value_get_double(&priv->curr_value) + 
+          (gdouble)priv->delta;
+        gdouble maxval = g_value_get_double(&priv->value_max);
+        gdouble minval = g_value_get_double(&priv->value_min);
+        if(val >= minval && val <= maxval)
+        {
+          g_value_set_double(&priv->curr_value, val);
+        }
+        break;
+      }
+    default:
+      g_assert_not_reached();
+      break;
+  }
+
+  notify_value_changed_valid(sp);
+  return TRUE;
+}
+
+
+static gboolean
+stepper_button_press_event_cb (ClutterActor       *actor,
+                               ClutterButtonEvent *event,
+                               MxSpinButton       *sp)
+{
+  MxSpinButtonPrivate *priv = sp->priv;
+  if(CLUTTER_ACTOR(actor) == priv->up_stepper)
+  {
+    priv->delta = 1;
+  }
+  else
+  {
+    priv->delta = -1;
+  }
+  _value_change_cb(sp);
+  priv->stepper_source = g_timeout_add(500, (GSourceFunc) 
+    _value_change_cb, sp);
+  return FALSE;
+}
+
+static gboolean
+stepper_button_release_cb (ClutterActor       *actor,
+                           ClutterButtonEvent *event,
+                           MxSpinButton       *sp)
+{
+  MxSpinButtonPrivate *priv = sp->priv;
+  if(0 != priv->stepper_source)
+  {
+    g_source_remove(priv->stepper_source);
+  }
+  priv->stepper_source = 0;
+  return FALSE;
+}
+
+static void
+_text_changed(ClutterText *c_txt, MxSpinButton *sp)
+{
+  MxSpinButtonPrivate *priv = sp->priv;
+  const gchar *txt = clutter_text_get_text(c_txt);
+  gchar *pattern;
+  switch (priv->type) 
+  {
+    case G_TYPE_LONG:
+    case G_TYPE_INT:
+    case G_TYPE_INT64:
+        pattern = "-?[0-9]+";
+        break;
+    case G_TYPE_ULONG:
+    case G_TYPE_UINT:
+    case G_TYPE_UINT64:
+        pattern = "[0-9]+";
+        break;
+    case G_TYPE_FLOAT:
+    case G_TYPE_DOUBLE:
+        pattern = "[0-9]+\\.?[0-9]*";
+        break;
+    default:
+      g_assert_not_reached();
+      break;
+  }
+  gboolean valid = FALSE;
+  GRegex *regex = g_regex_new(pattern, 0, 0, NULL);
+  GMatchInfo *match_info;
+  g_regex_match(regex, txt, 0, &match_info);
+  if (g_match_info_matches (match_info))
+  {
+    gchar *word = g_match_info_fetch (match_info, 0);
+    valid = (0 == g_strcmp0(txt, word));
+    g_free (word);
+  }
+  g_match_info_free (match_info);
+  g_regex_unref (regex);
+
+  priv->is_valid = valid;
+  if(!valid)
+  {
+    clutter_text_set_color(c_txt, 
+        clutter_color_get_static(CLUTTER_COLOR_RED));
+  }
+  else
+  {
+    clutter_text_set_color(c_txt, 
+        clutter_color_get_static(CLUTTER_COLOR_BLACK));
+  }
 }
 
 static void
@@ -221,9 +516,39 @@ mx_spin_button_init (MxSpinButton *spin_button)
   MxSpinButtonPrivate *priv = spin_button->priv = 
     MX_SPIN_BUTTON_GET_PRIVATE(spin_button);
   priv->icon = NULL;
-  priv->entry = mx_entry_new();
+  priv->stepper_source = 0;
+  priv->entry = mx_entry_new_with_text("0");
+
+  ClutterActor *c_txt = mx_entry_get_clutter_text (MX_ENTRY(priv->entry));
+  g_signal_connect(c_txt, "text-changed", G_CALLBACK(_text_changed),
+    spin_button);
+
+  priv->is_valid = TRUE;
   clutter_actor_set_parent(priv->entry, CLUTTER_ACTOR(spin_button));
-  //TODO
+  
+  priv->down_stepper = (ClutterActor *) mx_button_new ();
+  mx_stylable_set_style_class (MX_STYLABLE (priv->down_stepper),
+                               "down-stepper");
+  clutter_actor_set_parent (CLUTTER_ACTOR (priv->down_stepper),
+                            CLUTTER_ACTOR (spin_button));
+  g_signal_connect (priv->down_stepper, "button-press-event",
+      G_CALLBACK (stepper_button_press_event_cb), spin_button);
+  g_signal_connect (priv->down_stepper, "button-release-event",
+      G_CALLBACK (stepper_button_release_cb), spin_button);
+  g_signal_connect (priv->down_stepper, "leave-event",
+      G_CALLBACK (stepper_button_release_cb), spin_button);
+
+  priv->up_stepper = (ClutterActor *) mx_button_new ();
+  mx_stylable_set_style_class (MX_STYLABLE (priv->up_stepper),
+                               "up-stepper");
+  clutter_actor_set_parent (CLUTTER_ACTOR (priv->up_stepper),
+                            CLUTTER_ACTOR (spin_button));
+  g_signal_connect (priv->up_stepper, "button-press-event",
+      G_CALLBACK (stepper_button_press_event_cb), spin_button);
+  g_signal_connect (priv->up_stepper, "button-release-event",
+      G_CALLBACK (stepper_button_release_cb), spin_button);
+  g_signal_connect (priv->up_stepper, "leave-event",
+      G_CALLBACK (stepper_button_release_cb), spin_button);
 }
 
 ClutterActor *mx_spin_button_new(GType type)
@@ -235,6 +560,7 @@ void mx_spin_button_set_value(MxSpinButton *spin_button, GValue value)
 {
   MxSpinButtonPrivate *priv = spin_button->priv;
   g_value_copy(&value, &priv->curr_value);
+  notify_value_changed_valid(spin_button);
 }
 
 void mx_spin_button_set_range(MxSpinButton *spin_button, 
@@ -293,5 +619,8 @@ void mx_spin_button_set_range(MxSpinButton *spin_button,
 
   mx_widget_set_tooltip_text(MX_WIDGET(priv->icon), tooltip);
   g_free(tooltip);
+
+  g_value_copy(value_min, &priv->value_min);
+  g_value_copy(value_max, &priv->value_max);
 }
 

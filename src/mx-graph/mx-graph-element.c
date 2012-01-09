@@ -7,11 +7,15 @@
 enum
 {
   PROP_0,
-
+  //Props for draggable overriding
   PROP_DRAG_THRESHOLD,
   PROP_AXIS,
   PROP_ENABLED,
   PROP_ACTOR,
+  //EigenProps
+  PROP_NAME,
+  PROP_BLURB
+
 };
 
 struct _MxGraphElementPrivate
@@ -19,6 +23,7 @@ struct _MxGraphElementPrivate
   gchar             *name;
   gchar             *short_desc;
   ClutterActor      *rect;
+  ClutterActor      *name_actor;
 
   gint               pad_size; //TODO : define as property
 
@@ -81,6 +86,7 @@ mx_graph_element_paint(ClutterActor *actor)
   CLUTTER_ACTOR_CLASS (mx_graph_element_parent_class)->paint (actor);
 
   clutter_actor_paint (priv->rect);
+  clutter_actor_paint (priv->name_actor);
 
   g_list_foreach(priv->northPads, (GFunc)clutter_actor_paint, NULL);
   g_list_foreach(priv->southPads, (GFunc)clutter_actor_paint, NULL);
@@ -109,6 +115,7 @@ mx_graph_element_map (ClutterActor *self)
   CLUTTER_ACTOR_CLASS (mx_graph_element_parent_class)->map (self);
 
   clutter_actor_map (priv->rect);
+  clutter_actor_map (priv->name_actor);
   g_list_foreach(priv->northPads, (GFunc)clutter_actor_map, NULL);
   g_list_foreach(priv->southPads, (GFunc)clutter_actor_map, NULL);
   g_list_foreach(priv->eastPads, (GFunc)clutter_actor_map, NULL);
@@ -123,6 +130,7 @@ mx_graph_element_unmap (ClutterActor *self)
   CLUTTER_ACTOR_CLASS (mx_graph_element_parent_class)->unmap (self);
 
   clutter_actor_unmap (priv->rect);
+  clutter_actor_unmap (priv->name_actor);
   g_list_foreach(priv->northPads, (GFunc)clutter_actor_unmap, NULL);
   g_list_foreach(priv->southPads, (GFunc)clutter_actor_unmap, NULL);
   g_list_foreach(priv->eastPads, (GFunc)clutter_actor_unmap, NULL);
@@ -147,6 +155,15 @@ mx_graph_element_allocate (ClutterActor           *actor,
   globalChildbox.y2 = (box->y2 - box->y1)-priv->pad_size/2.;
 
   clutter_actor_allocate (priv->rect, &globalChildbox, flags);
+  
+  childbox.x1 = childbox.y1 = priv->pad_size+1;
+  clutter_actor_get_preferred_width(
+      priv->name_actor, -1, NULL, &childbox.x2);
+  clutter_actor_get_preferred_height(
+      priv->name_actor, -1, NULL, &childbox.y2);
+  childbox.x2 += childbox.x1;
+  childbox.y2 += childbox.y1;
+  clutter_actor_allocate (priv->name_actor, &childbox, flags);
 
   gfloat available_h = globalChildbox.y2;
   
@@ -242,6 +259,16 @@ mx_graph_element_set_property (GObject      *gobject,
     case PROP_ACTOR:
       break;
 
+    case PROP_NAME:
+      priv->name = g_strdup(g_value_get_string(value));
+      clutter_text_set_text(CLUTTER_TEXT(priv->name_actor), priv->name);
+      break;
+
+    case PROP_BLURB:
+      priv->short_desc = g_strdup(g_value_get_string(value));
+      mx_widget_set_tooltip_text(MX_WIDGET(gobject), priv->short_desc);
+      break;
+
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (gobject, prop_id, pspec);
       break;
@@ -273,6 +300,13 @@ mx_graph_element_get_property (GObject    *gobject,
     case PROP_ACTOR:
         g_value_set_object (value, gobject);
       break;
+
+    case PROP_NAME:
+        g_value_set_string(value, priv->name);
+        break;
+    case PROP_BLURB:
+        g_value_set_string(value, priv->short_desc);
+        break;
 
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (gobject, prop_id, pspec);
@@ -307,6 +341,20 @@ mx_graph_element_class_init (MxGraphElementClass *klass)
   g_object_class_override_property (gobject_class,
                                     PROP_ACTOR,
                                     "drag-actor");
+  GParamSpec *pspec = NULL;
+  pspec = g_param_spec_string ("name",
+                               "Name",
+                               "Name of the Element",
+                               NULL,
+                               G_PARAM_READABLE | G_PARAM_WRITABLE);
+  g_object_class_install_property (gobject_class, PROP_NAME, pspec);
+
+  pspec = g_param_spec_string ("blurb",
+                               "Blurb",
+                               "Short description of the Element",
+                               NULL,
+                               G_PARAM_READABLE | G_PARAM_WRITABLE);
+  g_object_class_install_property (gobject_class, PROP_BLURB, pspec);
 }
 
 static void
@@ -320,6 +368,9 @@ mx_graph_element_init (MxGraphElement *actor)
   clutter_actor_set_parent(priv->rect, CLUTTER_ACTOR(actor));
   clutter_rectangle_set_border_width (CLUTTER_RECTANGLE(priv->rect), 2);
 
+  priv->name_actor = clutter_text_new();
+  clutter_actor_set_parent(priv->name_actor, CLUTTER_ACTOR(actor));
+
   priv->pad_size  = 10;
   priv->northPads = NULL;
   priv->southPads = NULL;
@@ -331,17 +382,10 @@ MxGraphElement *
 mx_graph_element_new(gchar *name, 
                      gchar *short_desc)
 {
-  MxGraphElement *res = MX_GRAPH_ELEMENT(
-      g_object_new(MX_TYPE_GRAPH_ELEMENT, NULL));
-  MxGraphElementPrivate *priv = res->priv;
-  priv->name               = name;
-  priv->short_desc         = short_desc;
-
-  gchar *txt = g_strdup_printf("%s \n %s", name, short_desc);
-  mx_widget_set_tooltip_text(MX_WIDGET(res), txt);
-  g_free(txt);
-
-  return res;
+  return MX_GRAPH_ELEMENT(g_object_new(MX_TYPE_GRAPH_ELEMENT, 
+        "name",  name,
+        "blurb", short_desc,
+        NULL));
 }
 
 void

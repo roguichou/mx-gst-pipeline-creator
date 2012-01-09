@@ -37,7 +37,8 @@ struct _MxGraphElementPadClass
   MxWidgetClass parent_class;
 };
 
-typedef gboolean (PadIsCompatibleFunc)(MxGraphElementPad *pad);
+typedef gboolean (PadIsCompatibleFunc)(MxGraphElementPad *src, 
+    MxGraphElementPad *dest);
 
 GType mx_graph_element_pad_get_type (void) G_GNUC_CONST;
 

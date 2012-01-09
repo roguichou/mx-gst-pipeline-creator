@@ -62,6 +62,7 @@ AC_CONFIG_FILES([
         Makefile
         src/Makefile
         src/mx-graph/Makefile
+        src/mx-gst-graph/Makefile
 ])
 
 AC_OUTPUT
