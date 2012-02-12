@@ -15,6 +15,15 @@ enum
   PROP_TYPE
 };
 
+enum
+{
+  VALUE_CHANGED,
+
+  LAST_SIGNAL
+};
+
+static guint spin_button_signals[LAST_SIGNAL] = { 0, };
+
 struct _MxSpinButtonPrivate
 {
   ClutterActor *entry;
@@ -22,7 +31,6 @@ struct _MxSpinButtonPrivate
   GValue        curr_value;
   GValue        value_min;
   GValue        value_max;
-  ClutterActor *icon;
   ClutterActor *down_stepper;
   ClutterActor *up_stepper;
   guint         stepper_source;
@@ -36,7 +44,8 @@ G_DEFINE_TYPE_WITH_CODE (MxSpinButton, mx_spin_button, MX_TYPE_WIDGET,
     G_IMPLEMENT_INTERFACE (MX_TYPE_FOCUSABLE, mx_focusable_iface_init));
 
 static MxFocusable*
-mx_spin_button_accept_focus (MxFocusable *focusable, MxFocusHint hint)
+mx_spin_button_accept_focus (MxFocusable *focusable, 
+                             MxFocusHint  hint)
 {
   MxSpinButtonPrivate *priv = MX_SPIN_BUTTON(focusable)->priv;
   mx_focusable_accept_focus(MX_FOCUSABLE (priv->entry), hint);
@@ -58,7 +67,6 @@ mx_spin_button_map (ClutterActor *self)
   CLUTTER_ACTOR_CLASS (mx_spin_button_parent_class)->map (self);
 
   clutter_actor_map (priv->entry);
-  clutter_actor_map (priv->icon);
   clutter_actor_map (priv->down_stepper);
   clutter_actor_map (priv->up_stepper);
 }
@@ -71,28 +79,26 @@ mx_spin_button_unmap (ClutterActor *self)
   CLUTTER_ACTOR_CLASS (mx_spin_button_parent_class)->unmap (self);
 
   clutter_actor_unmap (priv->entry);
-  clutter_actor_unmap (priv->icon);
   clutter_actor_unmap (priv->down_stepper);
   clutter_actor_unmap (priv->up_stepper);
 }
 
 static void
-mx_spin_button_paint(ClutterActor *actor)
+mx_spin_button_paint (ClutterActor *actor)
 {
   MxSpinButtonPrivate *priv = MX_SPIN_BUTTON(actor)->priv;
 
   CLUTTER_ACTOR_CLASS (mx_spin_button_parent_class)->paint (actor);
 
   clutter_actor_paint (priv->entry);
-  clutter_actor_paint (priv->icon);
   clutter_actor_paint (priv->down_stepper);
   clutter_actor_paint (priv->up_stepper);
 }
 
 static void
 mx_spin_button_allocate (ClutterActor           *actor,
-                               const ClutterActorBox  *box,
-                               ClutterAllocationFlags  flags)
+                         const ClutterActorBox  *box,
+                         ClutterAllocationFlags  flags)
 {
   MxSpinButtonPrivate *priv = MX_SPIN_BUTTON(actor)->priv;
 
@@ -104,16 +110,6 @@ mx_spin_button_allocate (ClutterActor           *actor,
   childbox.y1 = 0;
   
   gfloat h = (box->y2 - box->y1)/2.;
-
-  if(NULL != priv->icon)
-  {
-    gint sz = mx_icon_get_icon_size(MX_ICON(priv->icon));
-    childbox.x2 = sz;
-    childbox.y1 = h - sz/2.;
-    childbox.y2 = childbox.y1 + sz;
-    clutter_actor_allocate (priv->icon, &childbox, flags);
-    childbox.x1 = sz+2;
-  }
 
   childbox.y1 = 0;
   childbox.y2 = (box->y2 - box->y1);
@@ -134,9 +130,9 @@ mx_spin_button_allocate (ClutterActor           *actor,
 
 static void
 mx_spin_button_set_property (GObject      *gobject,
-                                   guint         prop_id,
-                                   const GValue *value,
-                                   GParamSpec   *pspec)
+                             guint         prop_id,
+                             const GValue *value,
+                             GParamSpec   *pspec)
 {
   MxSpinButtonPrivate *priv = MX_SPIN_BUTTON(gobject)->priv;
   switch (prop_id)
@@ -155,9 +151,9 @@ mx_spin_button_set_property (GObject      *gobject,
 
 static void
 mx_spin_button_get_property (GObject    *gobject,
-                                   guint       prop_id,
-                                   GValue     *value,
-                                   GParamSpec *pspec)
+                             guint       prop_id,
+                             GValue     *value,
+                             GParamSpec *pspec)
 {
   MxSpinButtonPrivate *priv = MX_SPIN_BUTTON(gobject)->priv;
 
@@ -174,9 +170,9 @@ mx_spin_button_get_property (GObject    *gobject,
 
 static void
 mx_spin_button_get_preferred_width (ClutterActor *actor,
-                              gfloat        for_height,
-                              gfloat       *min_width_p,
-                              gfloat       *natural_width_p)
+                                    gfloat        for_height,
+                                    gfloat       *min_width_p,
+                                    gfloat       *natural_width_p)
 {
   MxSpinButtonPrivate *priv = MX_SPIN_BUTTON(actor)->priv;
 
@@ -188,9 +184,9 @@ mx_spin_button_get_preferred_width (ClutterActor *actor,
 
 static void
 mx_spin_button_get_preferred_height (ClutterActor *actor,
-                               gfloat        for_width,
-                               gfloat       *min_height_p,
-                               gfloat       *natural_height_p)
+                                     gfloat        for_width,
+                                     gfloat       *min_height_p,
+                                     gfloat       *natural_height_p)
 {
   MxSpinButtonPrivate *priv = MX_SPIN_BUTTON(actor)->priv;
 
@@ -201,7 +197,7 @@ mx_spin_button_get_preferred_height (ClutterActor *actor,
 
 static void
 mx_spin_button_pick (ClutterActor       *actor,
-               const ClutterColor *c)
+                     const ClutterColor *c)
 {
   MxSpinButtonPrivate *priv = MX_SPIN_BUTTON(actor)->priv;
 
@@ -209,10 +205,6 @@ mx_spin_button_pick (ClutterActor       *actor,
 
   clutter_actor_paint (priv->entry);
 
-  if (NULL != priv->icon)
-  {
-    clutter_actor_paint (priv->icon);
-  }
   clutter_actor_paint (priv->down_stepper);
   clutter_actor_paint (priv->up_stepper);
 }
@@ -241,10 +233,20 @@ mx_spin_button_class_init (MxSpinButtonClass *klass)
                               G_TYPE_NONE,
                               G_PARAM_READABLE | G_PARAM_WRITABLE);
   g_object_class_install_property (gobject_class, PROP_TYPE, pspec);
+
+
+  spin_button_signals[VALUE_CHANGED] =
+    g_signal_new ("value-changed",
+                  G_TYPE_FROM_CLASS (gobject_class),
+                  G_SIGNAL_RUN_LAST,
+		              G_STRUCT_OFFSET (MxSpinButtonClass, value_changed),
+                  NULL, NULL, NULL,
+                  G_TYPE_NONE, 1, G_TYPE_POINTER);
+  
 }
 
 static void
-notify_value_changed_valid(MxSpinButton *spin_button)
+notify_value_changed_valid (MxSpinButton *spin_button)
 {
   MxSpinButtonPrivate *priv = spin_button->priv;
   gchar *txt = NULL;
@@ -284,11 +286,14 @@ notify_value_changed_valid(MxSpinButton *spin_button)
       break;
   }
   mx_entry_set_text(MX_ENTRY(priv->entry), txt);
+  
+  g_signal_emit (spin_button, spin_button_signals[VALUE_CHANGED], 0, 
+                 &priv->curr_value);
   g_free(txt);
 }
 
 static gboolean
-_value_change_cb(MxSpinButton *sp)
+_value_change_cb (MxSpinButton *sp)
 {
   MxSpinButtonPrivate *priv = sp->priv;
   if(!priv->is_valid)
@@ -459,7 +464,8 @@ stepper_button_release_cb (ClutterActor       *actor,
 }
 
 static void
-_text_changed(ClutterText *c_txt, MxSpinButton *sp)
+_text_changed (ClutterText  *c_txt, 
+               MxSpinButton *sp)
 {
   MxSpinButtonPrivate *priv = sp->priv;
   const gchar *txt = clutter_text_get_text(c_txt);
@@ -515,7 +521,6 @@ mx_spin_button_init (MxSpinButton *spin_button)
 {
   MxSpinButtonPrivate *priv = spin_button->priv = 
     MX_SPIN_BUTTON_GET_PRIVATE(spin_button);
-  priv->icon = NULL;
   priv->stepper_source = 0;
   priv->entry = mx_entry_new_with_text("0");
 
@@ -551,26 +556,31 @@ mx_spin_button_init (MxSpinButton *spin_button)
       G_CALLBACK (stepper_button_release_cb), spin_button);
 }
 
-ClutterActor *mx_spin_button_new(GType type)
+ClutterActor *
+mx_spin_button_new(GType type)
 {
   return g_object_new(MX_TYPE_SPIN_BUTTON, "type", type, NULL);
 }
 
-void mx_spin_button_set_value(MxSpinButton *spin_button, GValue value)
+void 
+mx_spin_button_set_value (MxSpinButton *spin_button, 
+                          GValue        value)
 {
   MxSpinButtonPrivate *priv = spin_button->priv;
   g_value_copy(&value, &priv->curr_value);
   notify_value_changed_valid(spin_button);
 }
 
-void mx_spin_button_set_range(MxSpinButton *spin_button, 
-    GValue *value_min, GValue *value_max)
+void 
+mx_spin_button_set_range (MxSpinButton *spin_button, 
+                          GValue       *value_min, 
+                          GValue       *value_max)
 {
   MxSpinButtonPrivate *priv = MX_SPIN_BUTTON(spin_button)->priv;
-  priv->icon = mx_icon_new();
-  mx_icon_set_icon_name(MX_ICON(priv->icon), "gtk-dialog-info");
-  mx_icon_set_icon_size(MX_ICON(priv->icon), 16);
-  clutter_actor_set_parent(priv->icon, CLUTTER_ACTOR(spin_button));
+
+  //Someday, FIXME
+  mx_entry_set_secondary_icon_from_file (MX_ENTRY(priv->entry),
+      "/usr/share/icons/gnome/16x16/status/dialog-information.png");
 
   gchar *tooltip = NULL;
   switch (priv->type) 
@@ -617,7 +627,8 @@ void mx_spin_button_set_range(MxSpinButton *spin_button,
       break;
   }
 
-  mx_widget_set_tooltip_text(MX_WIDGET(priv->icon), tooltip);
+  mx_entry_set_secondary_icon_tooltip_text (MX_ENTRY(priv->entry),
+                                            tooltip);
   g_free(tooltip);
 
   g_value_copy(value_min, &priv->value_min);

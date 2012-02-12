@@ -1,7 +1,7 @@
 #include <gst/gst.h>
 #include <mx/mx.h>
 #include "mx-gst-graph-element.h"
-//#include "mx-graph-element-pad.h"
+#include "mx-gst-pipeline.h"
 
 GstElementFactory *st_videotestsrc_factory, 
                   *st_tee_factory;
@@ -89,6 +89,30 @@ next:
   gst_plugin_list_free (plugins);
 }
 
+ClutterActor *detailsExpander = NULL;
+ClutterActor *propsExpander = NULL;
+
+static void init_side_bar()
+{
+  ClutterActor *vbox = mx_box_layout_new();
+  mx_box_layout_set_orientation (MX_BOX_LAYOUT(vbox),
+                                 MX_ORIENTATION_VERTICAL);
+  clutter_actor_set_size(vbox, 350, 768);
+  
+  detailsExpander = mx_expander_new();
+  mx_expander_set_label(MX_EXPANDER(detailsExpander), "Details");
+  clutter_container_add_actor (CLUTTER_CONTAINER(vbox),
+                               detailsExpander);
+  
+  propsExpander = mx_expander_new();
+  mx_expander_set_label(MX_EXPANDER(propsExpander), "Properties");
+  clutter_container_add_actor (CLUTTER_CONTAINER(vbox),
+                               propsExpander);
+  
+  clutter_container_add_actor (
+      CLUTTER_CONTAINER(clutter_stage_get_default()),
+      vbox);
+}
 
 int main(int argc, char **argv)
 {
@@ -101,59 +125,29 @@ int main(int argc, char **argv)
   _gst_init();
  
   ClutterActor *stage = clutter_stage_get_default ();
-  clutter_actor_set_size (stage, 640, 480);
+  clutter_actor_set_size (stage, 1024, 768);
 
-/*
+  init_side_bar();
 
-  MxGraphElementPad *pad;
-  MxGraphElement    *elt;
-  
-  elt = (mx_graph_element_new("TATA", "TETE"));
-  clutter_actor_set_size(CLUTTER_ACTOR(elt), 100, 100);
-  clutter_actor_set_position(CLUTTER_ACTOR(elt), 50, 50);
-  clutter_container_add_actor(CLUTTER_CONTAINER(stage), CLUTTER_ACTOR(elt));
-  mx_draggable_set_axis (MX_DRAGGABLE (elt), MX_DRAG_AXIS_NONE);
-  mx_draggable_enable (MX_DRAGGABLE (elt));
-
-  pad = (mx_graph_element_pad_new("TATA", "TATA", NULL));
-  mx_graph_element_add_pad(elt, pad, PAD_POSITION_WEST);
-
-  pad = (mx_graph_element_pad_new("TETE", "TETE", NULL));
-  mx_graph_element_add_pad(elt, pad, PAD_POSITION_WEST);
-
-  pad = (mx_graph_element_pad_new("TITI", "TITI", NULL));
-  mx_graph_element_add_pad(elt, pad, PAD_POSITION_EAST);
-
-  pad = (mx_graph_element_pad_new("TUTU", "TUTU", NULL));
-  mx_graph_element_add_pad(elt, pad, PAD_POSITION_EAST);
-
-  pad = (mx_graph_element_pad_new("TYTY", "TYTY", NULL));
-  mx_graph_element_add_pad(elt, pad, PAD_POSITION_EAST);
-
-
-  elt = (mx_graph_element_new("SISI", "NONO"));
-  clutter_actor_set_size(CLUTTER_ACTOR(elt), 100, 100);
-  clutter_actor_set_position(CLUTTER_ACTOR(elt), 250, 50);
-  clutter_container_add_actor(CLUTTER_CONTAINER(stage), CLUTTER_ACTOR(elt));
-  mx_draggable_set_axis (MX_DRAGGABLE (elt), MX_DRAG_AXIS_NONE);
-  mx_draggable_enable (MX_DRAGGABLE (elt));
-
-  pad = (mx_graph_element_pad_new("NONO", "le petit robot", NULL));
-  mx_graph_element_add_pad(elt, pad, PAD_POSITION_WEST);
-*/
+  ClutterActor *pipeline = CLUTTER_ACTOR(mx_gst_pipeline_new());
+  clutter_container_add_actor (CLUTTER_CONTAINER(stage), pipeline);
+  clutter_actor_set_size(pipeline, 1024-350, 768);
+  clutter_actor_set_position(pipeline, 350, 0);
 
   MxGstGraphElement    *elt;
   elt = mx_gst_graph_element_new(st_videotestsrc_factory);
   clutter_actor_set_size(CLUTTER_ACTOR(elt), 125, 100);
   clutter_actor_set_position(CLUTTER_ACTOR(elt), 50, 50);
-  clutter_container_add_actor(CLUTTER_CONTAINER(stage), CLUTTER_ACTOR(elt));
+  clutter_container_add_actor (CLUTTER_CONTAINER(pipeline), 
+                               CLUTTER_ACTOR(elt));
   mx_draggable_set_axis (MX_DRAGGABLE (elt), MX_DRAG_AXIS_NONE);
   mx_draggable_enable (MX_DRAGGABLE (elt));
 
   elt = mx_gst_graph_element_new(st_tee_factory);
   clutter_actor_set_size(CLUTTER_ACTOR(elt), 125, 100);
   clutter_actor_set_position(CLUTTER_ACTOR(elt), 250, 50);
-  clutter_container_add_actor(CLUTTER_CONTAINER(stage), CLUTTER_ACTOR(elt));
+  clutter_container_add_actor (CLUTTER_CONTAINER(pipeline),
+                               CLUTTER_ACTOR(elt));
   mx_draggable_set_axis (MX_DRAGGABLE (elt), MX_DRAG_AXIS_NONE);
   mx_draggable_enable (MX_DRAGGABLE (elt));
 

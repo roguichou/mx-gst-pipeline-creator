@@ -36,6 +36,12 @@ struct _MxGstGraphElement
 struct _MxGstGraphElementClass
 {
   MxGraphElementClass parent_class;
+  
+  /* signals, not vfuncs */
+  void (* details_changed) (MxGraphElement *self,
+                            gchar          *details);
+  void (* props_editor_changed) (MxGraphElement *self,
+                                 ClutterActor   *props_editor);
 };
 
 GType mx_gst_graph_element_get_type (void) G_GNUC_CONST;

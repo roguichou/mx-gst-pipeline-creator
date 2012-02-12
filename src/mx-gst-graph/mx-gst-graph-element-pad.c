@@ -9,85 +9,17 @@ struct _MxGstGraphElementPadPrivate
   GstStaticPadTemplate      *pad_template;
   GstPad                    *pad;
   MxGraphElementPadPosition  position;
-  gboolean                   but_pressed;
-  ClutterActor              *dialog;
+  gchar                     *details;
 };
 
 G_DEFINE_TYPE(MxGstGraphElementPad, 
               mx_gst_graph_element_pad, 
               MX_TYPE_GRAPH_ELEMENT_PAD);
 
-static gboolean 
-mx_gst_graph_element_pad_leave(ClutterActor *actor,
-    ClutterCrossingEvent *event)
-{
-  MxGstGraphElementPad *pad = MX_GST_GRAPH_ELEMENT_PAD(actor);
-  MxGstGraphElementPadPrivate *priv = pad->priv;
-  priv->but_pressed = FALSE;
-  //for the tooltip
-  return CLUTTER_ACTOR_CLASS (mx_gst_graph_element_pad_parent_class)->
-    leave_event (actor, event);
-}
-
-static gboolean 
-mx_gst_graph_element_pad_button_press (ClutterActor       *actor, 
-                                   ClutterButtonEvent *event)
-{
-  MxGstGraphElementPad *pad = MX_GST_GRAPH_ELEMENT_PAD(actor);
-  MxGstGraphElementPadPrivate *priv = pad->priv;
-  priv->but_pressed = TRUE;
-
-  return CLUTTER_ACTOR_CLASS (mx_gst_graph_element_pad_parent_class)->
-    button_press_event (actor, event);
-}
-
-static void 
-mx_gst_graph_element_pad_close_dialog(gpointer unused,
-                                      ClutterActor *dialog)
-{
-  clutter_actor_hide (dialog);
-}
-
-static gboolean 
-mx_gst_graph_element_pad_button_release(ClutterActor       *actor, 
-                                   ClutterButtonEvent *event)
-{
-  MxGstGraphElementPad *pad = MX_GST_GRAPH_ELEMENT_PAD(actor);
-  MxGstGraphElementPadPrivate *priv = pad->priv;
-  if(priv->but_pressed)
-  {
-    clutter_actor_show(priv->dialog); 
-    gfloat x, y,
-           w, h,
-           stage_w, stage_h;
-    clutter_actor_get_transformed_position(actor, &x, &y);
-    clutter_actor_get_size(priv->dialog, &w, &h);
-    clutter_actor_get_size(CLUTTER_ACTOR(clutter_stage_get_default()),
-      &stage_w, &stage_h);
-    if(x+w > stage_w)
-    {
-      x = stage_w - w;
-    }
-    if(y+h > stage_h)
-    {
-      y = stage_h - h;
-    }
-
-    clutter_actor_set_position(priv->dialog, x, y);
-  }
-  priv->but_pressed = FALSE;
-  return FALSE;
-}
-
 static void
 mx_gst_graph_element_pad_class_init (MxGstGraphElementPadClass *klass)
 {
   g_type_class_add_private (klass, sizeof (MxGstGraphElementPadPrivate));
-  ClutterActorClass *actor_class = CLUTTER_ACTOR_CLASS (klass);
-  actor_class->button_press_event = mx_gst_graph_element_pad_button_press;
-  actor_class->button_release_event = 
-    mx_gst_graph_element_pad_button_release;
-  actor_class->leave_event = mx_gst_graph_element_pad_leave;
 }
 
 static void
@@ -161,42 +93,23 @@ _print_caps(GstCaps *caps, gboolean full)
 }
 
 static void
-mx_gst_graph_element_pad_create_info_dialog(MxGstGraphElementPad *pad)
+mx_gst_graph_element_pad_create_info_txt (MxGstGraphElementPad *pad)
 {
   MxGstGraphElementPadPrivate *priv = pad->priv;
-  priv->dialog = mx_dialog_new();
-  MxAction *action_quit = mx_action_new_full("close", "Close",
-      G_CALLBACK(mx_gst_graph_element_pad_close_dialog), priv->dialog);
-  mx_dialog_add_action(MX_DIALOG(priv->dialog), action_quit);
-
-  ClutterActor *scroll_view = mx_scroll_view_new();
-  ClutterActor *kinetic = mx_kinetic_scroll_view_new ();
-  mx_bin_set_child (MX_BIN (priv->dialog), scroll_view);
-  clutter_actor_set_size (scroll_view, 275, 200);
-
-  ClutterActor *view = mx_viewport_new ();
-  mx_viewport_set_sync_adjustments (MX_VIEWPORT (view), FALSE);
-  clutter_container_add_actor (CLUTTER_CONTAINER (kinetic), view);
-  clutter_container_add_actor (CLUTTER_CONTAINER (scroll_view), kinetic);
 
   GString *txt = g_string_new("");
   g_string_append_printf(txt, "Name:  %s\n", 
       gst_pad_get_name(priv->pad));
   GString *caps_str = _print_caps(gst_pad_get_caps(priv->pad), TRUE);
   txt = g_string_append(txt, caps_str->str);  
-  ClutterActor *label = mx_label_new_with_text (txt->str);
-  clutter_container_add_actor (CLUTTER_CONTAINER (view), label);
   g_string_free(caps_str, TRUE);
-  g_string_free(txt, TRUE);
+  priv->details = g_string_free(txt, FALSE);
+}
 
-  MxAdjustment *vadjust;
-  mx_scrollable_get_adjustments (MX_SCROLLABLE (view), NULL, &vadjust);
-  mx_adjustment_set_values (vadjust,
-      0, 0, clutter_actor_get_height(label), 60, 120, 200);
-
-  clutter_container_add_actor(
-      CLUTTER_CONTAINER(clutter_stage_get_default()),
-      priv->dialog); 
+gchar *
+mx_gst_pad_get_details(MxGstGraphElementPad *pad)
+{
+  return pad->priv->details;
 }
 
 static gboolean
@@ -262,7 +175,7 @@ mx_gst_graph_element_pad_new (GstStaticPadTemplate *pad_template,
     (GST_PAD_SINK == pad_template->direction) ? PAD_POSITION_WEST:
     PAD_POSITION_SOUTH;
 
-  mx_gst_graph_element_pad_create_info_dialog (eltPad);
+  mx_gst_graph_element_pad_create_info_txt (eltPad);
   return eltPad;
 }
 

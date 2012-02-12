@@ -4,7 +4,7 @@
 
 #include "mx-graph-element.h"
 #include "mx-graph-element-pad.h"
-#include "mx-graph-element-link.h"
+#include "mx-selectable.h"
 
 enum
 {
@@ -12,8 +12,18 @@ enum
 
   PROP_NAME,
   PROP_BLURB,
-  PROP_COMPATIBLE_FUNC
+  PROP_COMPATIBLE_FUNC,
+
+  PROP_SELECTED
 };
+
+enum
+{
+  LINK_CREATION,
+
+  LAST_SIGNAL
+};
+static guint pad_signals[LAST_SIGNAL] = { 0, };
 
 struct _MxGraphElementPadPrivate
 {
@@ -21,31 +31,53 @@ struct _MxGraphElementPadPrivate
   gchar               *short_desc;
   PadIsCompatibleFunc *is_compatible_func;
   ClutterActor        *rect;
+  guint                rect_width;
   gulong               capture_event_signal_id;
   MxGraphElementLink  *link;
   gboolean             link_is_src;
   gulong               parent_allocation_changed_id;
+  gboolean             is_selected;
+  gboolean             pressed;
+  ClutterActor        *graph;
 };
 
-G_DEFINE_TYPE (MxGraphElementPad, mx_graph_element_pad, MX_TYPE_WIDGET)
+static void mx_selectable_iface_init (MxSelectableInterface *iface);
+
+G_DEFINE_TYPE_WITH_CODE (MxGraphElementPad, 
+                         mx_graph_element_pad, 
+                         MX_TYPE_WIDGET,
+                         G_IMPLEMENT_INTERFACE (MX_TYPE_SELECTABLE,
+                                                mx_selectable_iface_init));
 
 static void
-mx_graph_element_pad_paint(ClutterActor *actor)
+mx_graph_element_pad_set_selected (MxSelectable *selectable,
+                                   gboolean      selected)
+{
+  MxGraphElementPadPrivate *priv = MX_GRAPH_ELEMENT_PAD(selectable)->priv;
+  priv->is_selected = selected;
+}
+
+static void 
+mx_selectable_iface_init (MxSelectableInterface *iface)
+{
+  iface->set_selected = mx_graph_element_pad_set_selected;
+}
+
+static void
+mx_graph_element_pad_paint (ClutterActor *actor)
 {
   MxGraphElementPadPrivate *priv = MX_GRAPH_ELEMENT_PAD(actor)->priv;
-
   CLUTTER_ACTOR_CLASS (mx_graph_element_pad_parent_class)->paint (actor);
-
   clutter_actor_paint (priv->rect);
+  mx_selectable_draw_around_actor (MX_SELECTABLE (actor), 
+                                   CLUTTER_RECTANGLE (priv->rect));
 }
 
 static void
 mx_graph_element_pad_map (ClutterActor *self)
 {
   MxGraphElementPadPrivate *priv = MX_GRAPH_ELEMENT_PAD(self)->priv;
-
   CLUTTER_ACTOR_CLASS (mx_graph_element_pad_parent_class)->map (self);
-
   clutter_actor_map (priv->rect);
 }
 
@@ -53,9 +85,7 @@ static void
 mx_graph_element_pad_unmap (ClutterActor *self)
 {
   MxGraphElementPadPrivate *priv = MX_GRAPH_ELEMENT_PAD(self)->priv;
-
   CLUTTER_ACTOR_CLASS (mx_graph_element_pad_parent_class)->unmap (self);
-
   clutter_actor_unmap (priv->rect);
 }
 
@@ -70,26 +100,26 @@ mx_graph_element_pad_allocate (ClutterActor           *actor,
       actor, box, flags);
 
   ClutterActorBox childbox;
-  childbox.x1 = 0;
-  childbox.y1 = 0;
-  childbox.x2 = (box->x2 - box->x1);
-  childbox.y2 = (box->y2 - box->y1);
+  childbox.x1 = 1;
+  childbox.y1 = 1;
+  childbox.x2 = (box->x2 - box->x1)-1;
+  childbox.y2 = (box->y2 - box->y1)-1;
 
   clutter_actor_allocate (priv->rect, &childbox, flags);
 }
 
-static gboolean
+gboolean
 mx_graph_element_pad_is_compatible(MxGraphElementPad *pad_orig,
                                    MxGraphElementPad *pad_dest)
 {
-  if(NULL == pad_orig->priv->is_compatible_func || 
+  if (NULL == pad_orig->priv->is_compatible_func || 
       NULL == pad_dest->priv->is_compatible_func)
   {
     return TRUE;
   }
   else
   {
-    return pad_orig->priv->is_compatible_func(pad_orig, pad_dest);
+    return pad_orig->priv->is_compatible_func (pad_orig, pad_dest);
   }
 }
 
@@ -99,91 +129,110 @@ mx_graph_element_pad_on_link_destroy(MxGraphElementLink *link,
 {
   MxGraphElementPadPrivate *priv = pad->priv;
   priv->link = NULL;
-
 }
 
-static void
+gboolean
 mx_graph_element_pad_set_link(MxGraphElementPad  *pad, 
-                              MxGraphElementLink *link)
+                              MxGraphElementLink *link,
+                              gboolean            is_src)
 {
   MxGraphElementPadPrivate *priv = pad->priv;
   ClutterActorBox box;
   clutter_actor_get_allocation_box (CLUTTER_ACTOR(pad), &box);
-  if(NULL == priv->link)
+  if (NULL == priv->link)
   {
     priv->link = link;
-    priv->link_is_src = FALSE;
+    priv->link_is_src = is_src;
     gfloat xpos, ypos;
-    clutter_actor_get_transformed_position(CLUTTER_ACTOR(pad),
+    clutter_actor_get_transformed_position (CLUTTER_ACTOR(pad),
         &xpos, &ypos);
-    mx_graph_element_link_set_dest_point (priv->link, 
-        xpos + (box.x2-box.x1)/2., ypos + (box.y2-box.y1)/2.);
-
+    xpos += (box.x2-box.x1)/2.;
+    ypos += (box.y2-box.y1)/2.;
+    if (is_src)
+    {
+      mx_graph_element_link_set_orig_point (priv->link, xpos, ypos);
+    }
+    else
+    {
+      mx_graph_element_link_set_dest_point (priv->link, xpos, ypos);
+    }
     g_signal_connect(priv->link, "destroy", 
         G_CALLBACK(mx_graph_element_pad_on_link_destroy), pad);
+    return TRUE;
   }
   else
   {
-    ClutterContainer *cont = CLUTTER_CONTAINER(
-        clutter_actor_get_parent(CLUTTER_ACTOR(link)));
-    clutter_container_remove_actor(cont, CLUTTER_ACTOR(link));
+    return FALSE;
   }
 }
 
+static gboolean 
+mx_graph_element_pad_leave (ClutterActor         *actor,
+                            ClutterCrossingEvent *event)
+{
+  MxGraphElementPad *pad = MX_GRAPH_ELEMENT_PAD(actor);
+  MxGraphElementPadPrivate *priv = pad->priv;
+  priv->pressed = FALSE;
+  CLUTTER_ACTOR_CLASS (mx_graph_element_pad_parent_class)->
+    leave_event (actor, event);
+  return FALSE;
+}
+
 static gboolean
-mx_graph_element_pad_on_stage_capture (ClutterActor      *stage,
+mx_graph_element_pad_wait_for_desselection (ClutterActor      *stage,
                                        ClutterEvent      *event,
                                        MxGraphElementPad *actor)
 {
   MxGraphElementPadPrivate *priv = actor->priv;
   switch (event->type)
   {
-    case CLUTTER_BUTTON_RELEASE:
+    case CLUTTER_BUTTON_PRESS:
       {
-        if(0 != priv->capture_event_signal_id)
+        gfloat x,y, w, h;
+        clutter_actor_get_transformed_position (priv->graph,
+                                                &x, &y);
+        clutter_actor_get_size(priv->graph, &w, &h);
+        gfloat xevt, yevt;
+        clutter_event_get_coords(event, &xevt, &yevt);
+        xevt -= x;
+        yevt -= y;
+        if (xevt>0 && xevt<w && yevt>0 && yevt<h)
         {
-          g_signal_handler_disconnect(stage, priv->capture_event_signal_id);
-          priv->capture_event_signal_id = 0;
-        }
-        gfloat x, y;
-        clutter_event_get_coords(event, &x, &y);
-        ClutterActor *picked = clutter_stage_get_actor_at_pos(
-            CLUTTER_STAGE(clutter_stage_get_default()),
-            CLUTTER_PICK_REACTIVE, x, y);
-        if((NULL != picked && MX_IS_GRAPH_ELEMENT_PAD(picked)) &&
-            mx_graph_element_pad_is_compatible(MX_GRAPH_ELEMENT_PAD(actor),
-              MX_GRAPH_ELEMENT_PAD(picked)))
-        {
-          mx_graph_element_pad_set_link(MX_GRAPH_ELEMENT_PAD(picked), 
-              priv->link);
-          if(NULL != priv->link)
+          mx_selectable_set_selected (MX_SELECTABLE(actor), FALSE);
+          if (0 != priv->capture_event_signal_id)
           {
-            clutter_actor_set_reactive(CLUTTER_ACTOR(priv->link), TRUE);
+            g_signal_handler_disconnect (stage,
+                priv->capture_event_signal_id);
+            priv->capture_event_signal_id = 0;
           }
+          clutter_actor_queue_redraw (CLUTTER_ACTOR(actor));
         }
-        else
-        {      
-          ClutterContainer *cont = CLUTTER_CONTAINER(
-              clutter_actor_get_parent(CLUTTER_ACTOR(priv->link)));
-          clutter_container_remove_actor(cont, CLUTTER_ACTOR(priv->link));
-        }
-        ClutterActor *parent = clutter_actor_get_parent(CLUTTER_ACTOR(actor));
-        if(MX_IS_DRAGGABLE(parent))
-        {
-          mx_draggable_enable((MxDraggable *)parent);
-        }
+        break;
       }
-      break;
-    case CLUTTER_MOTION:
-      {
-        gfloat x, y;
-        clutter_event_get_coords(event, &x, &y);
-        mx_graph_element_link_set_dest_point (priv->link, x, y);
-      }
-      break;
     default:
       break;
   }
+  return FALSE;
+}
+
+
+static gboolean 
+mx_graph_element_pad_button_release (ClutterActor       *actor, 
+                                   ClutterButtonEvent *event)
+{
+  MxGraphElementPad *pad = MX_GRAPH_ELEMENT_PAD(actor);
+  MxGraphElementPadPrivate *priv = pad->priv;
+  if (priv->pressed)
+  {
+    mx_selectable_set_selected (MX_SELECTABLE(actor), TRUE);
+    priv->capture_event_signal_id = g_signal_connect_after (
+        clutter_stage_get_default(),
+        "captured-event", 
+        G_CALLBACK (mx_graph_element_pad_wait_for_desselection),
+        actor);
+    clutter_actor_queue_redraw (CLUTTER_ACTOR(actor));
+  }
+  priv->pressed = FALSE;
   return FALSE;
 }
 
@@ -193,41 +242,11 @@ mx_graph_element_pad_button_press (ClutterActor       *actor,
 {
   MxGraphElementPad *pad = MX_GRAPH_ELEMENT_PAD(actor);
   MxGraphElementPadPrivate *priv = pad->priv;
+  priv->pressed = TRUE;
 
-  if(NULL == priv->link)
+  if (NULL == priv->link)
   {
-    priv->capture_event_signal_id = g_signal_connect_after (
-        clutter_stage_get_default(),
-        "captured-event", 
-        G_CALLBACK (mx_graph_element_pad_on_stage_capture),
-        actor);
-
-    ClutterActorBox box;
-    clutter_actor_get_allocation_box (actor, &box);
-    // the parent should be a GraphElement.
-    // We want to add the link to the Container containing the GraphElement.
-    gfloat xpos, ypos;
-    clutter_actor_get_transformed_position(actor, &xpos, &ypos);
-    ClutterActor *cont = clutter_actor_get_parent(actor);
-    while(NULL != cont && !CLUTTER_IS_CONTAINER(cont))
-    {
-      cont = clutter_actor_get_parent(cont);
-    }
-    if(NULL != cont)
-    {
-      priv->link_is_src = TRUE;
-      priv->link = mx_graph_element_link_new(CLUTTER_CONTAINER(cont),
-          xpos + (box.x2-box.x1)/2., ypos + (box.y2-box.y1)/2.);
-
-      g_signal_connect(priv->link, "destroy", 
-          G_CALLBACK(mx_graph_element_pad_on_link_destroy), pad);
-
-      ClutterActor *parent = clutter_actor_get_parent(actor);
-      if(MX_IS_DRAGGABLE(parent))
-      {
-        mx_draggable_disable((MxDraggable *)parent);
-      }
-    }
+    g_signal_emit (actor, pad_signals[LINK_CREATION], 0);
   }
   return FALSE;
 }
@@ -246,7 +265,7 @@ mx_graph_element_pad_on_parent_allocation_changed(
     return;
   }
   gfloat posx, posy;
-  clutter_actor_get_transformed_position(CLUTTER_ACTOR(pad), &posx, &posy);
+  clutter_actor_get_transformed_position (CLUTTER_ACTOR(pad), &posx, &posy);
   
   ClutterActorBox box;
   clutter_actor_get_allocation_box (CLUTTER_ACTOR(pad), &box);
@@ -271,10 +290,9 @@ mx_graph_element_pad_parent_set(ClutterActor *actor,
 
   ClutterActor *parent = clutter_actor_get_parent(actor);
   priv->parent_allocation_changed_id = 
-    g_signal_connect(parent, "allocation-changed", 
+    g_signal_connect (parent, "allocation-changed", 
         G_CALLBACK(mx_graph_element_pad_on_parent_allocation_changed), actor);
 }
-
 
 static void
 mx_graph_element_pad_set_property (GObject      *gobject,
@@ -287,21 +305,26 @@ mx_graph_element_pad_set_property (GObject      *gobject,
   switch (prop_id)
   {
     case PROP_NAME:
-      priv->name = g_strdup(g_value_get_string(value));
-      txt = g_strdup_printf("%s \n %s", priv->name, priv->short_desc);
-      mx_widget_set_tooltip_text(MX_WIDGET(gobject), txt);
+      priv->name = g_strdup (g_value_get_string (value));
+      txt = g_strdup_printf ("%s \n %s", priv->name, priv->short_desc);
+      mx_widget_set_tooltip_text (MX_WIDGET(gobject), txt);
       g_free(txt);
       break;
 
     case PROP_BLURB:
-      priv->short_desc = g_strdup(g_value_get_string(value));
-      txt = g_strdup_printf("%s \n %s", priv->name, priv->short_desc);
-      mx_widget_set_tooltip_text(MX_WIDGET(gobject), txt);
+      priv->short_desc = g_strdup (g_value_get_string (value));
+      txt = g_strdup_printf ("%s \n %s", priv->name, priv->short_desc);
+      mx_widget_set_tooltip_text (MX_WIDGET(gobject), txt);
       g_free(txt);
       break;
 
     case PROP_COMPATIBLE_FUNC:
-      priv->is_compatible_func = g_value_get_pointer(value);
+      priv->is_compatible_func = g_value_get_pointer (value);
+      break;
+
+    case PROP_SELECTED:
+      mx_selectable_set_selected (MX_SELECTABLE(gobject),
+                                  g_value_get_boolean(value));
       break;
 
     default:
@@ -321,19 +344,23 @@ mx_graph_element_pad_get_property (GObject    *gobject,
   switch (prop_id)
   {
     case PROP_NAME:
-      g_value_set_string(value, priv->name);
+      g_value_set_string (value, priv->name);
       break;
     case PROP_BLURB:
-      g_value_set_string(value, priv->short_desc);
+      g_value_set_string (value, priv->short_desc);
       break;
     case PROP_COMPATIBLE_FUNC:
-      g_value_set_pointer(value, priv->is_compatible_func);
+      g_value_set_pointer (value, priv->is_compatible_func);
+      break;
+    case PROP_SELECTED:
+      g_value_set_boolean (value, priv->is_selected);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (gobject, prop_id, pspec);
       break;
   }
 }
+
 static void
 mx_graph_element_pad_class_init (MxGraphElementPadClass *klass)
 {
@@ -344,6 +371,8 @@ mx_graph_element_pad_class_init (MxGraphElementPadClass *klass)
   actor_class->unmap                = mx_graph_element_pad_unmap;
   actor_class->allocate             = mx_graph_element_pad_allocate;
   actor_class->button_press_event   = mx_graph_element_pad_button_press;
+  actor_class->button_release_event = mx_graph_element_pad_button_release;
+  actor_class->leave_event          = mx_graph_element_pad_leave;
   actor_class->parent_set           = mx_graph_element_pad_parent_set;
 
   GObjectClass *gobject_class = G_OBJECT_CLASS(klass);
@@ -371,8 +400,21 @@ mx_graph_element_pad_class_init (MxGraphElementPadClass *klass)
                                "Function to tell whether a pad"
                                "is compatible with this one or not",
                                G_PARAM_READABLE | G_PARAM_WRITABLE);
-  g_object_class_install_property(gobject_class, PROP_COMPATIBLE_FUNC, pspec);
+  g_object_class_install_property (gobject_class,
+                                   PROP_COMPATIBLE_FUNC,
+                                   pspec);
 
+  g_object_class_override_property (gobject_class,
+                                    PROP_SELECTED,
+                                    "selected");
+
+  pad_signals[LINK_CREATION] =
+    g_signal_new ("link-creation",
+                  G_TYPE_FROM_CLASS (gobject_class),
+                  G_SIGNAL_RUN_LAST,
+		              G_STRUCT_OFFSET (MxGraphElementPadClass, link_creation),
+                  NULL, NULL, NULL,
+                  G_TYPE_NONE, 0);
 }
 
 static void
@@ -384,10 +426,14 @@ mx_graph_element_pad_init (MxGraphElementPad *actor)
   priv->short_desc         = NULL;
   priv->is_compatible_func = NULL;
   priv->rect               = clutter_rectangle_new();
-  clutter_actor_set_parent(priv->rect, CLUTTER_ACTOR(actor));
-  clutter_rectangle_set_border_width (CLUTTER_RECTANGLE(priv->rect), 1);
+  priv->rect_width         = 1;
+  clutter_actor_set_parent (priv->rect, CLUTTER_ACTOR(actor));
+  clutter_rectangle_set_border_width (CLUTTER_RECTANGLE(priv->rect), 
+      priv->rect_width);
   priv->parent_allocation_changed_id = 0;
   priv->capture_event_signal_id = 0;
+
+  priv->is_selected = FALSE;
 }
 
 MxGraphElementPad *
@@ -396,11 +442,19 @@ mx_graph_element_pad_new(gchar               *name,
                          PadIsCompatibleFunc *is_compatible_func)
 {
   MxGraphElementPad *res = MX_GRAPH_ELEMENT_PAD(
-      g_object_new(MX_TYPE_GRAPH_ELEMENT_PAD, 
-        "name", name,
-        "blurb", short_desc,
-        "is-compatible-func", is_compatible_func,
-        NULL));
+      g_object_new (MX_TYPE_GRAPH_ELEMENT_PAD, 
+                    "name", name,
+                    "blurb", short_desc,
+                    "is-compatible-func", is_compatible_func,
+                    NULL));
   return res;
+}
+
+void
+mx_graph_element_pad_set_graph (MxGraphElementPad *pad, 
+                                ClutterActor      *graph)
+{
+  MxGraphElementPadPrivate *priv = pad->priv;
+  priv->graph = graph;
 }
 

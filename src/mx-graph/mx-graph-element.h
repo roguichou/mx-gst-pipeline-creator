@@ -44,19 +44,24 @@ struct _MxGraphElement
 struct _MxGraphElementClass
 {
   MxWidgetClass parent_class;
+  void (*link_creation)(MxGraphElement    *elt,
+                        MxGraphElementPad *pad);
 };
 
 GType mx_graph_element_get_type (void) G_GNUC_CONST;
 
 void 
-mx_graph_element_add_pad(MxGraphElement            *elt, 
+mx_graph_element_add_pad (MxGraphElement            *elt, 
                          MxGraphElementPad         *pad, 
                          MxGraphElementPadPosition  position);
 
 MxGraphElement *
-mx_graph_element_new(gchar *name, 
+mx_graph_element_new (gchar *name, 
                      gchar *short_desc);
 
+void
+mx_graph_element_set_graph (MxGraphElement *elt, 
+                            ClutterActor   *graph);
 G_END_DECLS
 
 #endif //_MX_GRAPH_ELEMENT_H_

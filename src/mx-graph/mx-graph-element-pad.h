@@ -2,6 +2,7 @@
 #define _MX_GRAPH_ELEMENT_PAD_H_
 
 #include <mx/mx.h>
+#include "mx-graph-element-link.h"
 
 G_BEGIN_DECLS
 
@@ -35,6 +36,7 @@ struct _MxGraphElementPad
 struct _MxGraphElementPadClass
 {
   MxWidgetClass parent_class;
+  void (*link_creation)(MxGraphElementPad *pad);
 };
 
 typedef gboolean (PadIsCompatibleFunc)(MxGraphElementPad *src, 
@@ -46,6 +48,19 @@ MxGraphElementPad *
 mx_graph_element_pad_new(gchar               *name, 
                          gchar               *short_desc,
                          PadIsCompatibleFunc *is_compatible_func);
+
+gboolean
+mx_graph_element_pad_is_compatible (MxGraphElementPad *pad_orig,
+                                    MxGraphElementPad *pad_dest);
+
+gboolean
+mx_graph_element_pad_set_link (MxGraphElementPad  *pad, 
+                               MxGraphElementLink *link,
+                               gboolean            is_src);
+
+void
+mx_graph_element_pad_set_graph (MxGraphElementPad *pad, 
+                                ClutterActor      *graph);
 
 G_END_DECLS
 

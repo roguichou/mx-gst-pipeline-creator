@@ -2,6 +2,7 @@
 #define _MX_GST_PIPELINE_H_
 
 #include <mx/mx.h>
+#include "mx-graph.h"
 
 G_BEGIN_DECLS
 
@@ -28,13 +29,13 @@ typedef struct _MxGstPipelinePrivate MxGstPipelinePrivate;
 
 struct _MxGstPipeline
 {
-  ClutterGroup          parent_instance;
+  MxGraph               parent_instance;
   MxGstPipelinePrivate *priv;
 };
 
 struct _MxGstPipelineClass
 {
-  ClutterGroupClass parent_class;
+  MxGraphClass parent_class;
 };
 
 GType mx_gst_pipeline_get_type (void) G_GNUC_CONST;

@@ -48,6 +48,9 @@ mx_gst_graph_element_pad_new (GstStaticPadTemplate *pad_template,
 MxGraphElementPadPosition
 mx_gst_graph_element_pad_get_position (MxGstGraphElementPad *pad);
 
+gchar *
+mx_gst_pad_get_details(MxGstGraphElementPad *pad);
+
 G_END_DECLS
 
 #endif //_MX_GST_GRAPH_ELEMENT_PAD_H_

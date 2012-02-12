@@ -479,8 +479,6 @@ mx_graph_element_link_new(ClutterContainer *cont,
 
   MxGraphElementLinkPrivate *priv = res->priv;
   
-  gfloat xpos, ypos;
-  clutter_actor_get_transformed_position(CLUTTER_ACTOR(cont), &xpos, &ypos);
   //Initialization : a degenerated line with the 2 same points.
   priv->coords = g_malloc(4*sizeof(gfloat));
   priv->coords[0] = priv->coords[2] = 0;
@@ -490,7 +488,7 @@ mx_graph_element_link_new(ClutterContainer *cont,
   priv->bounding_box.x1 = 0; priv->bounding_box.y1 = 0;
   priv->bounding_box.x2 = 0; priv->bounding_box.y2 = 0;
 
-  clutter_actor_set_position(CLUTTER_ACTOR(res),xorig-xpos, yorig-ypos);
+  clutter_actor_set_position(CLUTTER_ACTOR(res),xorig, yorig);
   clutter_actor_set_size(CLUTTER_ACTOR(res),1,1);
   
   return res;

@@ -33,14 +33,26 @@ struct _MxSpinButton
 struct _MxSpinButtonClass
 {
   MxWidgetClass parent_class;
+
+  /* signals, not vfuncs */
+  void (* value_changed) (MxSpinButton *self,
+                          GValue *value);
 };
 
-GType mx_spin_button_get_type (void) G_GNUC_CONST;
+GType
+mx_spin_button_get_type  (void) G_GNUC_CONST;
 
-ClutterActor         *mx_spin_button_new              (GType type);
-void mx_spin_button_set_value(MxSpinButton *spin_button, GValue value);
-void mx_spin_button_set_range(MxSpinButton *spin_button, 
-    GValue *minval, GValue *maxval);
+ClutterActor *
+mx_spin_button_new       (GType type);
+
+void
+mx_spin_button_set_value (MxSpinButton *spin_button, 
+                          GValue        value);
+
+void
+mx_spin_button_set_range (MxSpinButton *spin_button, 
+                          GValue       *minval,
+                          GValue       *maxval);
 
 G_END_DECLS
 
